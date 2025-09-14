@@ -1,89 +1,66 @@
-name: Build HomeProxy IPK
+name: Build IPK for HomeProxy with Clash UI
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
-  workflow_dispatch:
-    inputs:
-      target:
-        description: 'Target platform'
-        required: true
-        default: 'mediatek/filogic'
-      version:
-        description: 'OpenWrt version'
-        required: true
-        default: '23.05.3'
+    branches:
+      - 'main'
+      - 'master'
+    paths:
+      - 'htdocs/**'
+      - 'po/**'
+      - 'root/**'
+      - 'Makefile'
+      - '.github/**'
 
-env:
-  OPENWRT_VERSION: ${{ github.event.inputs.version || '23.05.3' }}
-  TARGET_PLATFORM: ${{ github.event.inputs.target || 'mediatek/filogic' }}
+  pull_request:
+    branches:
+      - 'main'
+      - 'master'
+    types:
+      - opened
+      - synchronize
+      - reopened
+    paths:
+      - 'htdocs/**'
+      - 'root/**'
+      - 'Makefile'
+      - '.github/**'
+
+  workflow_dispatch:
+
+  release:
+    types:
+      - published
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup build environment
-      run: |
-        sudo apt update
-        sudo apt install -y \
-          build-essential git wget curl python3 python3-setuptools \
-          zlib1g-dev libssl-dev libncurses5-dev unzip gawk \
-          subversion gettext rsync file
-          
-    - name: Download OpenWrt source
-      run: |
-        git clone --depth 1 --branch v${{ env.OPENWRT_VERSION }} \
-          https://github.com/openwrt/openwrt.git openwrt
-          
-    - name: Update feeds
-      working-directory: openwrt
-      run: |
-        ./scripts/feeds update -a
-        ./scripts/feeds install -a
-        
-    - name: Copy package files
-      run: |
-        mkdir -p openwrt/package/luci-app-homeproxy
-        cp -r Makefile htdocs po root openwrt/package/luci-app-homeproxy/
-        
-    - name: Configure build
-      working-directory: openwrt
-      run: |
-        make defconfig
-        echo "CONFIG_TARGET_$(echo ${{ env.TARGET_PLATFORM }} | tr '/' '_')=y" >> .config
-        echo "CONFIG_PACKAGE_luci-app-homeproxy=m" >> .config
-        make defconfig
-        
-    - name: Build package
-      working-directory: openwrt
-      run: |
-        make package/luci-app-homeproxy/compile V=s
-        
-    - name: Collect artifacts
-      run: |
-        mkdir -p artifacts
-        find openwrt/bin/ -name "*luci-app-homeproxy*.ipk" -exec cp {} artifacts/ \;
-        ls -la artifacts/
-        
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: luci-app-homeproxy-ipk-${{ env.TARGET_PLATFORM }}-${{ env.OPENWRT_VERSION }}
-        path: artifacts/*.ipk
-        
-    - name: Create release
-      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: v${{ github.run_number }}
-        name: HomeProxy IPK v${{ github.run_number }}
-        files: artifacts/*.ipk
-        generate_release_notes: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout source tree
+        uses: actions/checkout@v4
+
+      - name: Build IPK file
+        env:
+          RELEASE_TYPE: ${{ github.event_name }}
+        run: |
+          pushd .github
+          fakeroot bash build-ipk.sh
+          echo "ASSET_NAME=$(ls *.ipk)" >> $GITHUB_ENV
+          popd
+
+      - name: Publishing to GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        if: github.event_name != 'release'
+        with:
+          name: ${{ env.ASSET_NAME }}
+          path: .github/*.ipk
+
+      - name: Publishing to GitHub Releases
+        uses: svenstaro/upload-release-action@v2
+        if: github.event_name == 'release'
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: .github/*.ipk
+          tag: ${{ github.ref }}
+          file_glob: true
