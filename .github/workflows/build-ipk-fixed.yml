@@ -1,4 +1,4 @@
-name: Build HomeProxy IPK v2
+name: Build HomeProxy IPK (Fixed)
 
 on:
   push:
@@ -28,7 +28,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04  # 使用Ubuntu 20.04避免依赖问题
     
     steps:
     - name: Checkout code
@@ -47,29 +47,31 @@ jobs:
         sudo apt update
         sudo apt install -y \
           build-essential \
-          clang \
-          flex \
-          bison \
+          ccache \
+          ecj \
+          fastjar \
+          file \
           g++ \
           gawk \
-          gcc-multilib \
-          g++-multilib \
           gettext \
           git \
+          java-propose-classpath \
+          libelf-dev \
           libncurses5-dev \
+          libncursesw5-dev \
           libssl-dev \
           python3 \
-          python3-setuptools \
           python3-dev \
+          python3-distutils \
+          python3-setuptools \
           rsync \
-          unzip \
-          zlib1g-dev \
-          file \
-          wget \
-          curl \
           subversion \
+          swig \
           time \
-          xz-utils
+          unzip \
+          wget \
+          xsltproc \
+          zlib1g-dev
           
     - name: Download OpenWrt source
       run: |
@@ -94,6 +96,7 @@ jobs:
         echo "CONFIG_TARGET_$(echo ${{ env.TARGET_PLATFORM }} | tr '/' '_')=y" >> .config
         echo "CONFIG_PACKAGE_luci-app-homeproxy=m" >> .config
         make defconfig
+        cat .config | grep luci-app-homeproxy
         
     - name: Build package
       working-directory: openwrt
@@ -106,7 +109,7 @@ jobs:
         find openwrt/bin/ -name "*luci-app-homeproxy*.ipk" -exec cp {} artifacts/ \;
         ls -la artifacts/
         echo "Checking file content:"
-        file artifacts/*
+        file artifacts/* || true
         
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -128,20 +131,26 @@ jobs:
           ### 🔧 OpenWrt Version: ${{ env.OPENWRT_VERSION }}
           
           ### ✨ Features
-          - Complete Clash API support
-          - Web Dashboard integration
-          - Advanced routing rules
-          - DNS filtering
-          - Access control
+          - ✅ Complete Clash API support
+          - ✅ Web Dashboard integration  
+          - ✅ Advanced routing rules
+          - ✅ DNS filtering
+          - ✅ Access control
           
           ### 📋 Installation
           ```bash
+          # Upload IPK file to your router and run:
           opkg install luci-app-homeproxy_*.ipk
           /etc/init.d/uhttpd restart
           ```
           
           ### 🌐 Access
-          After installation, visit: `http://router-ip/cgi-bin/luci/admin/services/homeproxy`
+          After installation: `http://router-ip/cgi-bin/luci/admin/services/homeproxy`
+          
+          ### 🛠️ Build Details
+          - Build Date: ${{ github.event.head_commit.timestamp }}
+          - Commit: ${{ github.sha }}
+          - Ubuntu: 20.04 LTS
         files: artifacts/*.ipk
         generate_release_notes: false
       env:
